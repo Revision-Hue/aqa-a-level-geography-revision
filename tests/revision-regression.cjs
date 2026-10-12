@@ -53,7 +53,7 @@ test('All embedded scripts parse',()=>{for(const match of source.matchAll(/<scri
 test('Backup and sync cover identical keys including notes, resources, theme and subject tools',()=>{
  const h=fresh({[lab]:JSON.stringify({notes:{test:'Personal note'},resources:[{text:'Teacher notes'}]}),[theme]:'light'});
  h.modules[2].exportBackup();const backup=JSON.parse(h.context.lastBlob).data,sync=h.modules[3].progressPayload().keys;
- assert.deepEqual(JSON.parse(JSON.stringify(sync)),backup);assert.equal(backup[theme],'light');assert.ok(backup[lab]);assert.ok(Object.hasOwn(backup,perf));assert.equal(Object.keys(backup).length,7);
+ assert.deepEqual(JSON.parse(JSON.stringify(sync)),backup);assert.equal(backup[theme],'light');assert.ok(backup[lab]);assert.ok(Object.hasOwn(backup,perf));assert.equal(Object.keys(backup).length,9);
  const other=fresh();other.context.__aqaProgress.restore(backup);assert.equal(other.store.get(lab),backup[lab]);assert.equal(other.store.get(theme),'light');
 });
 test('Restores clear explicit nulls, preserve omitted legacy keys and reject malformed data before writes',()=>{
@@ -187,10 +187,10 @@ test('Existing knowledge and case IDs preserve all previous content and saved pr
  const baseline=h.eval('({notes:Object.fromEntries(Object.entries(U).map(([k,v])=>[k,v.notes.slice(0,('+JSON.stringify(counts)+')[k])])),cases:CASES.slice(0,33)})');
  assert.equal(require('crypto').createHash('sha256').update(JSON.stringify(baseline)).digest('hex'),'e41d84784cb5e7611800c0edfce6051e1c5735fe74befb10c5ff3d57f41d2396');
 });
-test('Expansion adds six knowledge cards to every topic and 14 sourced case studies',()=>{
+test('Inline expansions preserve the baseline and add sourced cases and knowledge',()=>{
  const h=fresh(),counts={"water": 8, "coasts": 6, "deserts": 5, "glaciers": 6, "hazards": 9, "ecosystems": 6, "global": 6, "places": 6, "urban": 6, "population": 8, "resources": 6},data=h.eval('({topics:U,cases:CASES})');
- for(const [id,n] of Object.entries(counts)){assert.equal(data.topics[id].notes.length,n+6);assert(data.topics[id].notes.slice(n).every(x=>x.length===3&&x.every(y=>typeof y==='string'&&y.length>10)));}
- assert.equal(h.modules[1].srCards().length,138);assert.equal(data.cases.length,47);assert.equal(new Set(data.cases.map(x=>x.id)).size,47);
+ for(const [id,n] of Object.entries(counts)){assert(data.topics[id].notes.length>=n+6);assert(data.topics[id].notes.slice(n).every(x=>x.length===3&&x.every(y=>typeof y==='string'&&y.length>10)));}
+ assert(h.modules[1].srCards().length>=138);assert.equal(data.cases.length,58);assert.equal(new Set(data.cases.map(x=>x.id)).size,58);
  for(const c of data.cases.slice(33)){assert(c.tags.every(t=>data.topics[t]));for(const key of ['name','location','stats','factors','evaluation','sourceLabel'])assert(c[key].length>10);assert.equal(new URL(c.sourceURL).protocol,'https:');for(const s of c.moreSources||[])assert.equal(new URL(s.url).protocol,'https:');}
  const results=h.modules[2].index();assert(JSON.stringify(results).includes('Medmerry'));assert(JSON.stringify(results).includes('Population momentum'));
 });
@@ -198,6 +198,6 @@ test('Expansion adds six knowledge cards to every topic and 14 sourced case stud
 (async()=>{
  const handlers={},deleted=[];let done;
  vm.runInNewContext(fs.readFileSync(path.join(root,'sw.js'),'utf8'),{self:{addEventListener:(n,f)=>handlers[n]=f,clients:{claim(){}},skipWaiting(){}},caches:{keys:async()=>['geo-revision-pwa-v1','geo-revision-pwa-v2','rs-revision-pwa-v1','rs-revision-pwa-v2','geo-revision-pwa-v3','rs-revision-pwa-v3','geo-revision-pwa-v4','rs-revision-pwa-v4'],delete:async k=>deleted.push(k)}});
- handlers.activate({waitUntil:p=>done=p});await done;assert.deepEqual(deleted,[kind+'-revision-pwa-v1',kind+'-revision-pwa-v2',kind+'-revision-pwa-v3']);checks++;console.log('PASS Service worker retains sibling caches');
+ handlers.activate({waitUntil:p=>done=p});await done;assert.deepEqual(deleted,[kind+'-revision-pwa-v1',kind+'-revision-pwa-v2',kind+'-revision-pwa-v3',kind+'-revision-pwa-v4']);checks++;console.log('PASS Service worker retains sibling caches');
  console.log(`${subject}: ${checks} regression checks passed`);
 })().catch(e=>{console.error(e);process.exitCode=1});

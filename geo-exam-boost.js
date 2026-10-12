@@ -4,7 +4,7 @@
 if(typeof U==="undefined"||!window.__aqaSmart)return;
 const KEY="aqa-geo-exam-boost-v1";
 const esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const read=()=>{try{return JSON.parse(localStorage.getItem(KEY)||"{}")||{};}catch(e){return{};}};
+const read=()=>{try{return JSON.parse(window.__aqaRead(KEY)||"{}")||{};}catch(e){return{};}};
 let st=Object.assign({gapRuns:[],caseRight:0,caseWrong:0,ao3Done:{},mapDone:{}},read());
 const save=()=>{try{if(window.__aqaStore)window.__aqaStore(KEY,JSON.stringify(st));else localStorage.setItem(KEY,JSON.stringify(st));}catch(e){}};
 const shuffle=a=>{a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
@@ -21,27 +21,29 @@ const launch=document.createElement("button");launch.id="exam-boost-launch";laun
 const perf=document.getElementById("performance-launch");perf?.parentNode?.insertBefore(launch,perf);
 const dlg=document.createElement("dialog");dlg.id="exam-boost-dialog";dlg.className="eb-dialog no-print";dlg.innerHTML='<div class="eb-head"><div><p class="eyebrow">Exam-focused practice</p><h2>Exam Boost</h2></div><button type="button" id="eb-close">Close</button></div><nav class="eb-tabs" aria-label="Exam Boost tools"><button type="button" data-eb-tab="gap" aria-pressed="true">Knowledge Gap Test</button><button type="button" data-eb-tab="stats">Case Statistics</button><button type="button" data-eb-tab="ao3">AO3 Mega Bank</button><button type="button" data-eb-tab="map">OS Map Skills</button></nav><div id="eb-content"></div>';
 document.body.appendChild(dlg);
-let tab="gap",gap=null,statAt=0,statRevealed=false,ao3At=0,ao3Reveal=false,mapAt=0,mapReveal=false;
+let tab=st.tab||"gap",gap=st.activeGap||null,statAt=st.statAt||0,statRevealed=false,ao3At=st.ao3At||0,ao3Reveal=false,mapAt=st.mapAt||0,mapReveal=false;
+let drafts=st.drafts||{},statFeedback="";
+function saveSession(){Object.assign(st,{tab,activeGap:gap,statAt,ao3At,mapAt,drafts});save();}
 
 function geoTopicPaper(id){return ["water","coasts","deserts","glaciers","hazards","ecosystems"].includes(id)?1:2;}
 function gapPool(scope){
- const cards=window.__aqaSmart.cards().filter(c=>U[c.topic]&&!c.custom&&(scope==="all"||geoTopicPaper(c.topic)===Number(scope)));
+ const cards=window.__aqaSmart.cards().filter(c=>U[c.topic]&&!c.custom&&(scope==="all"||(scope==="course"?unitsFor("physical").concat(unitsFor("human")).includes(c.topic):geoTopicPaper(c.topic)===Number(scope))));
  const by={};cards.forEach(c=>(by[c.topic]||(by[c.topic]=[])).push(c));
  const ids=shuffle(Object.keys(by)),out=[];let round=0;
  while(out.length<30&&ids.some(id=>by[id].length>round)){for(const id of ids){if(by[id][round]&&out.length<30)out.push(by[id][round]);}round++;}
  return shuffle(out);
 }
-function startGap(scope){gap={items:gapPool(scope||"all"),at:0,reveal:false,results:[]};gap.items.forEach(c=>logQ(c.q,c.topic,"Knowledge Gap Test",null,false,null));render();}
+function startGap(scope){Object.keys(drafts).filter(k=>k.startsWith("gap:")).forEach(k=>delete drafts[k]);gap={items:gapPool(scope||"all"),at:0,reveal:false,results:[],completed:false};gap.items.forEach(c=>logQ(c.q,c.topic,"Knowledge Gap Test",null,false,null));render();}
 function gapView(){
- if(!gap)return '<section class="eb-box"><h3>Knowledge Gap Test</h3><p class="muted">A 30-question retrieval diagnostic spread across the paper. Rate each answer after revealing it; Partial/Wrong answers are automatically added to your Mistakes Bank.</p><label>Coverage<select id="eb-gap-scope"><option value="all">Both papers</option><option value="1">Paper 1 · Physical</option><option value="2">Paper 2 · Human</option></select></label><button class="eb-primary" id="eb-gap-start" type="button">Start 30-question test</button></section>';
+ if(!gap)return '<section class="eb-box"><h3>Knowledge Gap Test</h3><p class="muted">A 30-question retrieval diagnostic spread across the paper. Rate each answer after revealing it; Partial/Wrong answers are automatically added to your Mistakes Bank.</p><label>Coverage<select id="eb-gap-scope"><option value="course">My course options</option><option value="all">Both papers · all options</option><option value="1">Paper 1 · Physical</option><option value="2">Paper 2 · Human</option></select></label><button class="eb-primary" id="eb-gap-start" type="button">Start diagnostic</button></section>';
  if(gap.at>=gap.items.length){
    const c=gap.results.filter(x=>x==="correct").length,p=gap.results.filter(x=>x==="partial").length,w=gap.results.filter(x=>x==="wrong").length,score=Math.round((c+p*.5)/Math.max(1,gap.results.length)*100);
    const topic={};gap.items.forEach((x,i)=>{const r=gap.results[i];topic[x.topic]=topic[x.topic]||{n:0,s:0};topic[x.topic].n++;topic[x.topic].s+=r==="correct"?1:r==="partial"?0.5:0;});
-   st.gapRuns.unshift({at:Date.now(),score,correct:c,partial:p,wrong:w});st.gapRuns=st.gapRuns.slice(0,25);save();
+   if(!gap.completed){st.gapRuns.unshift({at:Date.now(),score,correct:c,partial:p,wrong:w});st.gapRuns=st.gapRuns.slice(0,25);gap.completed=true;saveSession();}
    return '<section class="eb-box"><h3>Knowledge Gap result</h3><div class="eb-score">'+score+'%</div><p>'+c+' secure · '+p+' partial · '+w+' gaps</p>'+Object.keys(topic).sort((a,b)=>topic[a].s/topic[a].n-topic[b].s/topic[b].n).map(id=>'<div class="eb-topic-row"><div><strong>'+esc(U[id].title)+'</strong><progress max="100" value="'+Math.round(topic[id].s/topic[id].n*100)+'"></progress></div><span>'+Math.round(topic[id].s/topic[id].n*100)+'%</span></div>').join("")+'<div class="eb-actions"><button id="eb-gap-again" class="eb-primary">Run another test</button><button id="eb-open-mistakes">Open Mistakes Bank</button></div></section>';
  }
  const c=gap.items[gap.at];
- return '<section class="eb-box"><div class="eb-spread"><span class="eb-pill">Question '+(gap.at+1)+' / '+gap.items.length+'</span><span class="eb-pill">'+esc(U[c.topic].title)+'</span></div><h3>'+esc(c.q)+'</h3><textarea id="eb-gap-answer" placeholder="Answer from memory. Your typed answer is not auto-marked; reveal and self-assess accurately."></textarea>'+(!gap.reveal?'<button id="eb-gap-reveal" class="eb-primary">Reveal answer</button>':'<div class="eb-answer"><strong>Answer:</strong> '+esc(c.a)+'</div><div class="eb-actions"><button data-gap-rate="correct" class="eb-primary">Correct</button><button data-gap-rate="partial">Partial</button><button data-gap-rate="wrong">Wrong / did not know</button></div>')+'</section>';
+ return '<section class="eb-box"><div class="eb-spread"><span class="eb-pill">Question '+(gap.at+1)+' / '+gap.items.length+'</span><span class="eb-pill">'+esc(U[c.topic].title)+'</span></div><button id="eb-gap-reset">Restart diagnostic</button><h3>'+esc(c.q)+'</h3><textarea id="eb-gap-answer" placeholder="Answer from memory. Reveal and self-assess accurately.">'+esc(drafts['gap:'+gap.at]||'')+'</textarea>'+(!gap.reveal?'<button id="eb-gap-reveal" class="eb-primary">Reveal answer</button>':'<div class="eb-answer"><strong>Answer:</strong> '+esc(c.a)+'</div><div class="eb-actions"><button data-gap-rate="correct" class="eb-primary">Correct</button><button data-gap-rate="partial">Partial</button><button data-gap-rate="wrong">Wrong / did not know</button></div>')+'</section>';
 }
 
 const STATS=[
@@ -70,15 +72,18 @@ const STATS=[
 ["places","Eden Project","Approximately how many visitors does Eden report since opening in 2001?",25,2,"million visitors","More than 25 million visitors."],
 ["population","Niger population","Approximately how many years is Niger’s population doubling time in the UNFPA 2025 profile?",22,2,"years","About 22 years."]
 ];
-function num(v){v=String(v||"").toLowerCase().replace(/,/g,"").trim();let m=v.match(/-?\d+(?:\.\d+)?/);if(!m)return NaN;let n=Number(m[0]);if(/billion|\bbn\b/.test(v))n*=1000;if(/million|\bmn\b/.test(v))n*=1;return n;}
+function num(v){v=String(v||"").toLowerCase().replace(/,/g,"").trim();const m=v.match(/^(-?\d+(?:\.\d+)?)\s*(?:million|million people|million visitors|million ha|people|visitors|vessels|deaths|ha|acres|km\/h|m\/year|m\/yr|days|year|years|%|children per woman|mw|m)?$/);return m?Number(m[1]):NaN;}
 function statView(){
  const q=STATS[statAt%STATS.length];
- return '<section class="eb-box"><div class="eb-spread"><div><h3>Case-Study Statistics Trainer</h3><p class="muted">Type the statistic you would use in an exam. Reasonable rounding is accepted.</p></div><span class="eb-pill">'+(statAt+1)+' / '+STATS.length+'</span></div><p class="eyebrow">'+esc(q[1])+'</p><h3>'+esc(q[2])+'</h3><label>Your answer<input id="eb-stat-answer" inputmode="decimal" placeholder="Number or rounded value"></label>'+(!statRevealed?'<button id="eb-stat-check" class="eb-primary">Check</button>':'<div class="eb-answer">'+esc(q[6])+'</div>')+'<div id="eb-stat-feedback"></div><div class="eb-actions"><button id="eb-stat-next">Next statistic</button><button id="eb-stat-shuffle">Shuffle question</button></div><p class="small muted">Score: '+st.caseRight+' correct · '+st.caseWrong+' to review</p></section>';
+ return '<section class="eb-box"><div class="eb-spread"><div><h3>Case-Study Statistics Trainer</h3><p class="muted">Type the statistic you would use in an exam. Reasonable rounding is accepted.</p></div><span class="eb-pill">'+(statAt+1)+' / '+STATS.length+'</span></div><p class="eyebrow">'+esc(q[1])+'</p><h3>'+esc(q[2])+'</h3><label>Your answer<input id="eb-stat-answer" inputmode="decimal" value="'+esc(drafts['stat:'+statAt]||'')+'" placeholder="Answer in '+esc(q[5])+'"></label>'+(!statRevealed?'<button id="eb-stat-check" class="eb-primary">Check</button>':'<div class="eb-answer">'+esc(q[6])+'</div>')+'<div id="eb-stat-feedback" role="status">'+esc(statRevealed?statFeedback:'')+'</div><div class="eb-actions"><button id="eb-stat-next">Next statistic</button><button id="eb-stat-shuffle">Shuffle question</button></div><p class="small muted">Score: '+st.caseRight+' correct · '+st.caseWrong+' to review</p></section>';
 }
 function checkStat(){
  const q=STATS[statAt%STATS.length];let v=num(document.getElementById("eb-stat-answer")?.value);
  if(Number.isFinite(v)&&/million/i.test(q[5])&&v>100000)v=v/1000000;
+ if(statRevealed)return;
+ if(!String(document.getElementById("eb-stat-answer")?.value||"").trim()){alert("Enter an answer first.");return;}
  const ok=Number.isFinite(v)&&Math.abs(v-q[3])<=q[4];
+ logQ(q[2],q[0],"Case Statistics",null,true,ok?100:0);statFeedback=ok?"Correct":"Needs review";
  statRevealed=true;if(ok)st.caseRight++;else{st.caseWrong++;addMistake(q[0],q[2],q[6],"Case-study statistic to relearn","Evidence");}save();render();
  setTimeout(()=>{const b=document.getElementById("eb-stat-feedback");if(b)b.innerHTML='<div class="'+(ok?"eb-feedback-good":"eb-feedback-warn")+'"><strong>'+(ok?"Correct":"Needs review")+'</strong> · accepted answer: '+q[3]+' '+esc(q[5])+'</div>';},0);
 }
@@ -139,7 +144,7 @@ function chartSVG(d){
 function ao3Tasks(){const out=[];DATASETS.forEach(d=>d.tasks.forEach((t,i)=>out.push({d,t,i})));return out;}
 function ao3View(){
  const all=ao3Tasks(),x=all[ao3At%all.length],key=x.d.id+":"+x.i,done=!!st.ao3Done[key];
- return '<section class="eb-box"><div class="eb-spread"><div><h3>AO3 Mega Bank</h3><p class="muted">Original exam-style resources: calculations, description, inference and limitations.</p></div><span class="eb-pill">'+(ao3At+1)+' / '+all.length+' tasks</span></div><h3>'+esc(x.d.title)+'</h3>'+chartSVG(x.d)+'<p class="eyebrow">'+x.t[1]+' marks</p><h3>'+esc(x.t[0])+'</h3><textarea placeholder="Write your answer before revealing the model points."></textarea>'+(!ao3Reveal?'<button id="eb-ao3-reveal" class="eb-primary">Reveal model points</button>':'<div class="eb-answer">'+esc(x.t[2])+'</div><div class="eb-actions"><button data-ao3-rate="secure" class="eb-primary">Secure</button><button data-ao3-rate="review">Needs review</button></div>')+'<p class="small muted">'+(done?"Previously marked secure/reviewed.":"Not attempted yet.")+'</p><button id="eb-ao3-next">Next AO3 task</button></section>';
+ return '<section class="eb-box"><div class="eb-spread"><div><h3>AO3 Mega Bank</h3><p class="muted">Original exam-style resources: calculations, description, inference and limitations.</p></div><span class="eb-pill">'+(ao3At+1)+' / '+all.length+' tasks</span></div><h3>'+esc(x.d.title)+'</h3>'+chartSVG(x.d)+'<p class="eyebrow">'+x.t[1]+' marks</p><h3>'+esc(x.t[0])+'</h3><textarea id="eb-ao3-answer" aria-label="Your resource answer" placeholder="Write your answer before revealing the model points.">'+esc(drafts['ao3:'+ao3At]||'')+'</textarea>'+(!ao3Reveal?'<button id="eb-ao3-reveal" class="eb-primary">Reveal model points</button>':'<div class="eb-answer">'+esc(x.t[2])+'</div><div class="eb-actions"><button data-ao3-rate="secure" class="eb-primary">Secure</button><button data-ao3-rate="review">Needs review</button></div>')+'<p class="small muted">'+(done?"Previously marked secure/reviewed.":"Not attempted yet.")+'</p><button id="eb-ao3-next">Next AO3 task</button></section>';
 }
 
 function mapSVG(){
@@ -151,13 +156,13 @@ function mapSVG(){
  g+='<path class="river" d="M415 70 C400 170 355 230 380 330 C400 420 335 500 300 700"/><text class="small" x="355" y="350">River Lune</text>';
  g+='<path class="road" d="M80 560 L250 500 L350 425 L470 360 L675 300"/><text class="small" x="505" y="335">A610</text>';
  g+='<path class="minor" d="M250 500 L185 620 L100 665"/><path class="minor" d="M350 425 L520 505"/>';
- [[360,190,70],[360,190,105],[360,190,140],[360,190,175]].forEach((c,i)=>g+='<ellipse class="contour" cx="'+c[0]+'" cy="'+c[1]+'" rx="'+(c[2]+i*5)+'" ry="'+(c[2]*.55+i*3)+'"/>');
- g+='<text class="small" x="330" y="95">220</text><text class="small" x="305" y="120">200</text><text class="small" x="280" y="145">180</text><text class="small" x="255" y="170">160</text>';
- g+='<circle cx="523" cy="425" r="9" class="settle"/><circle cx="540" cy="440" r="8" class="settle"/><circle cx="505" cy="445" r="8" class="settle"/><text class="label" x="545" y="420">Oakford</text>';
+ [[523,145,25],[523,145,45],[523,145,65],[523,145,85]].forEach((c,i)=>g+='<ellipse class="contour" cx="'+c[0]+'" cy="'+c[1]+'" rx="'+(c[2]+i*5)+'" ry="'+(c[2]*.55+i*3)+'"/>');
+ g+='<text class="small" x="501" y="145">220</text><text class="small" x="481" y="145">200</text><text class="small" x="461" y="145">180</text><text class="small" x="441" y="145">160</text>';
+ g+='<circle cx="523" cy="425" r="9" class="settle"/><circle cx="533" cy="430" r="8" class="settle"/><circle cx="511" cy="430" r="8" class="settle"/><text class="label" x="545" y="420">Oakford</text>';
  g+='<polygon points="523,122 515,138 531,138" fill="#222"/><text class="label" x="538" y="132">▲ 240</text>';
  g+='<rect x="276" y="535" width="18" height="12" fill="#222"/><text class="small" x="300" y="545">Bridge</text>';
  g+='<polygon points="425,610 435,628 415,628" fill="#7b4f2d"/><text class="small" x="442" y="625">Camp</text>';
- g+='<text class="small" x="585" y="690">Scale 1:25,000</text><path d="M570 660 h100" stroke="#222" stroke-width="4"/><path d="M570 655 v10 M620 655 v10 M670 655 v10" stroke="#222" stroke-width="2"/><text class="small" x="568" y="650">0</text><text class="small" x="615" y="650">0.5</text><text class="small" x="662" y="650">1 km</text>';
+ g+='<text class="small" x="585" y="690">Scale 1:25,000</text><path d="M570 660 h65" stroke="#222" stroke-width="4"/><path d="M570 655 v10 M602.5 655 v10 M635 655 v10" stroke="#222" stroke-width="2"/><text class="small" x="568" y="650">0</text><text class="small" x="595" y="650">0.5</text><text class="small" x="625" y="650">1 km</text>';
  return g+'</svg>';
 }
 const MAPQ=[
@@ -165,7 +170,7 @@ const MAPQ=[
 ["Give the four-figure grid reference for the summit marked ▲240.","3768","The summit lies in grid square 3768.","glaciers"],
 ["What is the height of the marked summit?","240 m","The spot height shown is 240 m.","glaciers"],
 ["What is the contour interval on the hill?","20 m","The labelled contours increase 160, 180, 200, 220 m: interval 20 m.","glaciers"],
-["In which general direction is the summit from Oakford?","north-west / NW","From Oakford the summit is mainly north-west.","glaciers"],
+["In which general direction is the summit from Oakford?","north / N","The summit and Oakford have the same easting on this map; the summit is due north.","glaciers"],
 ["What map distance does 6 cm represent at 1:25,000?","1.5 km","1 cm = 250 m, so 6 cm = 1,500 m = 1.5 km.","urban"],
 ["A route climbs 100 m over 2 km horizontally. Express the gradient as 1:n.","1:20","2 km = 2,000 m; 2,000 ÷ 100 = 20, so gradient = 1:20.","glaciers"],
 ["Give one piece of map evidence that the north-west of the map is wooded.","green woodland area / Pine Wood label","The shaded area is labelled Pine Wood; map symbols/colour indicate woodland.","ecosystems"],
@@ -179,32 +184,36 @@ const MAPQ=[
 ];
 function mapView(){
  const q=MAPQ[mapAt%MAPQ.length],key=String(mapAt%MAPQ.length);
- return '<section class="eb-box"><div class="eb-spread"><div><h3>OS Map Skills Trainer</h3><p class="muted">Uses an original fictional OS-style map, not Ordnance Survey copyrighted mapping.</p></div><span class="eb-pill">'+(mapAt+1)+' / '+MAPQ.length+'</span></div><div class="eb-map-wrap">'+mapSVG()+'</div><h3>'+esc(q[0])+'</h3><input id="eb-map-answer" placeholder="Enter your answer">'+(!mapReveal?'<button id="eb-map-reveal" class="eb-primary">Reveal answer</button>':'<div class="eb-answer"><strong>Answer:</strong> '+esc(q[1])+'<br>'+esc(q[2])+'</div><div class="eb-actions"><button data-map-rate="secure" class="eb-primary">Got it</button><button data-map-rate="review">Need to review</button></div>')+'<button id="eb-map-next">Next map question</button></section>';
+ return '<section class="eb-box"><div class="eb-spread"><div><h3>OS Map Skills Trainer</h3><p class="muted">Uses an original fictional OS-style map, not Ordnance Survey copyrighted mapping. Use labelled coordinates and stated scale; screen dimensions vary.</p></div><span class="eb-pill">'+(mapAt+1)+' / '+MAPQ.length+'</span></div><div class="eb-map-wrap">'+mapSVG()+'</div><h3>'+esc(q[0])+'</h3><input id="eb-map-answer" aria-label="Your map answer" value="'+esc(drafts['map:'+mapAt]||'')+'" placeholder="Enter your answer">'+(!mapReveal?'<button id="eb-map-reveal" class="eb-primary">Reveal answer</button>':'<div class="eb-answer"><strong>Answer:</strong> '+esc(q[1])+'<br>'+esc(q[2])+'</div><div class="eb-actions"><button data-map-rate="secure" class="eb-primary">Got it</button><button data-map-rate="review">Need to review</button></div>')+'<button id="eb-map-next">Next map question</button></section>';
 }
 function render(){
- document.querySelectorAll("[data-eb-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.ebTab===tab)));
+ saveSession();
+ dlg.querySelectorAll("[data-eb-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.ebTab===tab)));
  const box=document.getElementById("eb-content");if(!box)return;
  box.innerHTML=tab==="gap"?gapView():tab==="stats"?statView():tab==="ao3"?ao3View():mapView();
 }
 function open(){render();dlg.showModal?dlg.showModal():dlg.setAttribute("open","");}
+window.__aqaExamBoost={open:function(t){tab=t||"gap";open();}};
 function close(){dlg.close?dlg.close():dlg.removeAttribute("open");}
+dlg.addEventListener("input",ev=>{const keys={"eb-gap-answer":"gap:"+gap?.at,"eb-stat-answer":"stat:"+statAt,"eb-ao3-answer":"ao3:"+ao3At,"eb-map-answer":"map:"+mapAt};if(keys[ev.target.id]){drafts[keys[ev.target.id]]=ev.target.value;saveSession();}});
 launch.addEventListener("click",open);document.getElementById("eb-close").addEventListener("click",close);
 dlg.addEventListener("click",e=>{
  const b=e.target.closest("button");if(!b)return;
  if(b.dataset.ebTab){tab=b.dataset.ebTab;render();return;}
  if(b.id==="eb-gap-start"){startGap(document.getElementById("eb-gap-scope").value);return;}
  if(b.id==="eb-gap-reveal"){gap.reveal=true;render();return;}
- if(b.dataset.gapRate){const c=gap.items[gap.at],r=b.dataset.gapRate;gap.results.push(r);if(r!=="correct")addMistake(c.topic,c.q,c.a,"Knowledge Gap Test: "+r,"Knowledge");logQ(c.q,c.topic,"Knowledge Gap Test",null,true,r==="correct"?100:r==="partial"?50:0);gap.at++;gap.reveal=false;render();return;}
+ if(b.dataset.gapRate){const c=gap?.items[gap.at],r=b.dataset.gapRate;if(!c||!gap.reveal)return;gap.results.push(r);if(r!=="correct")addMistake(c.topic,c.q,c.a,"Knowledge Gap Test: "+r,"Knowledge");logQ(c.q,c.topic,"Knowledge Gap Test",null,true,r==="correct"?100:r==="partial"?50:0);window.__aqaSmart.rateCard(c.id,r==="correct"?"good":"again");gap.at++;gap.reveal=false;render();return;}
  if(b.id==="eb-gap-again"){gap=null;render();return;}
+ if(b.id==="eb-gap-reset"){if(confirm("Restart this diagnostic? The current run will be replaced.")){gap=null;render();}return;}
  if(b.id==="eb-open-mistakes"){close();document.getElementById("smart-launch")?.click();setTimeout(()=>document.querySelector('[data-sr-tab="mistakes"]')?.click(),50);return;}
  if(b.id==="eb-stat-check"){checkStat();return;}
- if(b.id==="eb-stat-next"){statAt=(statAt+1)%STATS.length;statRevealed=false;render();return;}
- if(b.id==="eb-stat-shuffle"){statAt=Math.floor(Math.random()*STATS.length);statRevealed=false;render();return;}
+ if(b.id==="eb-stat-next"){statAt=(statAt+1)%STATS.length;statRevealed=false;statFeedback="";render();return;}
+ if(b.id==="eb-stat-shuffle"){statAt=Math.floor(Math.random()*STATS.length);statRevealed=false;statFeedback="";render();return;}
  if(b.id==="eb-ao3-reveal"){ao3Reveal=true;render();return;}
- if(b.dataset.ao3Rate){const x=ao3Tasks()[ao3At%ao3Tasks().length],key=x.d.id+":"+x.i;st.ao3Done[key]=b.dataset.ao3Rate;if(b.dataset.ao3Rate==="review")addMistake(x.d.id==="urban"?"urban":x.d.id==="coast"?"coasts":x.d.id==="glacier"?"glaciers":x.d.id==="population"?"population":x.d.id==="trade"?"global":"water",x.t[0],x.t[2],"AO3 resource question to revisit","Application");save();ao3At=(ao3At+1)%ao3Tasks().length;ao3Reveal=false;render();return;}
+ if(b.dataset.ao3Rate){if(!ao3Reveal)return;const x=ao3Tasks()[ao3At%ao3Tasks().length],key=x.d.id+":"+x.i;st.ao3Done[key]=b.dataset.ao3Rate;logQ(x.t[0],x.d.id==="coast"?"coasts":x.d.id==="trade"?"global":x.d.id==="glacier"?"glaciers":x.d.id==="urban"?"urban":x.d.id==="population"?"population":"water","AO3 resource practice",x.t[1],true,b.dataset.ao3Rate==="secure"?100:0);if(b.dataset.ao3Rate==="review")addMistake(x.d.id==="urban"?"urban":x.d.id==="coast"?"coasts":x.d.id==="glacier"?"glaciers":x.d.id==="population"?"population":x.d.id==="trade"?"global":"water",x.t[0],x.t[2],"AO3 resource question to revisit","Application");save();ao3At=(ao3At+1)%ao3Tasks().length;ao3Reveal=false;render();return;}
  if(b.id==="eb-ao3-next"){ao3At=(ao3At+1)%ao3Tasks().length;ao3Reveal=false;render();return;}
  if(b.id==="eb-map-reveal"){mapReveal=true;render();return;}
- if(b.dataset.mapRate){const q=MAPQ[mapAt%MAPQ.length];st.mapDone[String(mapAt%MAPQ.length)]=b.dataset.mapRate;if(b.dataset.mapRate==="review")addMistake(q[3],q[0],q[1]+" — "+q[2],"OS map skill to revisit","Application");save();mapAt=(mapAt+1)%MAPQ.length;mapReveal=false;render();return;}
+ if(b.dataset.mapRate){if(!mapReveal)return;const q=MAPQ[mapAt%MAPQ.length];logQ(q[0],q[3],"OS map resource",null,true,b.dataset.mapRate==="secure"?100:0);st.mapDone[String(mapAt%MAPQ.length)]=b.dataset.mapRate;if(b.dataset.mapRate==="review")addMistake(q[3],q[0],q[1]+" — "+q[2],"OS map skill to revisit","Application");save();mapAt=(mapAt+1)%MAPQ.length;mapReveal=false;render();return;}
  if(b.id==="eb-map-next"){mapAt=(mapAt+1)%MAPQ.length;mapReveal=false;render();return;}
 });
 })();

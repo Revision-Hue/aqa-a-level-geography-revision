@@ -1,0 +1,12 @@
+{
+  "name": "private-aqa-geography-revision",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node tests/revision-regression.cjs && node tests/site-interactions.cjs && node tests/offline-and-package.cjs",
+    "build": "node scripts/build.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}
